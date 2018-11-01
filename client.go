@@ -340,7 +340,6 @@ func (c *context) interfaces() []Interface {
 var MaxQueueBuffer = 100
 
 func certpool() (*x509.CertPool, error) {
-	var pool *x509.CertPool
 	systemPool, err := x509.SystemCertPool()
 
 	if err == nil {
@@ -361,7 +360,7 @@ func newTransport() Transport {
 		t.Client = &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{RootCAs: rootCAs},
+				TLSClientConfig: &tls.Config{RootCAs: pool},
 			},
 		}
 	}
