@@ -25,8 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/christianhadler/zcrypto/ct/x509"
-
 	"github.com/certifi/gocertifi"
 	pkgErrors "github.com/pkg/errors"
 )
@@ -345,32 +343,63 @@ func certpool() (*x509.CertPool, error) {
 	if err == nil && len(systemPool.Subjects()) > 0 {
 		return systemPool, nil
 	}
-
 	return gocertifi.CACerts()
 }
 
-func newTransport() Transport {
-	t := &HTTPTransport{}
-
+// helper for Options.CertPool
+func DefaultCertPoolWithExtra(certs []*x509.Certificate) (*x509.CertPool, error) {
 	pool, err := certpool()
 
 	if err != nil {
-		log.Println("raven: failed to load root TLS certificates:", err)
+		return nil, err
+	}
+
+	for _, cert := range certs {
+		pool.AddCert(cert)
+	}
+
+	return pool, nil
+}
+
+func newTransport(opts *TransportOptions) Transport {
+	t := &HTTPTransport{}
+
+	var pool *x509.CertPool
+	var err error
+
+	if opts.CertPool != nil {
+		pool = opts.CertPool
 	} else {
-		t.Client = &http.Client{
-			Transport: &http.Transport{
-				Proxy:           http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{RootCAs: pool},
-			},
+		pool, err = certpool()
+
+		if err != nil {
+			log.Println("raven: failed to load root TLS certificates:", err)
 		}
 	}
+
+	t.Client = &http.Client{
+		Transport: &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{RootCAs: pool},
+		},
+	}
+
 	return t
 }
 
-func newClient(tags map[string]string) *Client {
+type TransportOptions struct {
+	CertPool *x509.CertPool
+}
+
+type Options struct {
+	Tags      map[string]string
+	Transport TransportOptions
+}
+
+func newClient(opts *Options) *Client {
 	client := &Client{
-		Transport:  newTransport(),
-		Tags:       tags,
+		Transport:  newTransport(&opts.Transport),
+		Tags:       opts.Tags,
 		context:    &context{},
 		sampleRate: 1.0,
 		queue:      make(chan *outgoingPacket, MaxQueueBuffer),
@@ -389,7 +418,7 @@ func New(dsn string) (*Client, error) {
 
 // NewWithTags constructs a new Sentry client instance with default tags.
 func NewWithTags(dsn string, tags map[string]string) (*Client, error) {
-	client := newClient(tags)
+	client := newClient(&Options{Tags: tags})
 	return client, client.SetDSN(dsn)
 }
 
@@ -398,7 +427,7 @@ func NewWithTags(dsn string, tags map[string]string) (*Client, error) {
 //
 // Deprecated: use New and NewWithTags instead
 func NewClient(dsn string, tags map[string]string) (*Client, error) {
-	client := newClient(tags)
+	client := newClient(&Options{Tags: tags})
 	return client, client.SetDSN(dsn)
 }
 
