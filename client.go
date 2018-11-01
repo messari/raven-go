@@ -6,6 +6,7 @@ import (
 	"compress/zlib"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/christianhadler/zcrypto/ct/x509"
 
 	"github.com/certifi/gocertifi"
 	pkgErrors "github.com/pkg/errors"
@@ -336,9 +339,22 @@ func (c *context) interfaces() []Interface {
 // Packets will be dropped if the buffer is full. Used by NewClient.
 var MaxQueueBuffer = 100
 
+func certpool() (*x509.CertPool, error) {
+	var pool *x509.CertPool
+	systemPool, err := x509.SystemCertPool()
+
+	if err == nil {
+		return systemPool, nil
+	}
+
+	return gocertifi.CACerts()
+}
+
 func newTransport() Transport {
 	t := &HTTPTransport{}
-	rootCAs, err := gocertifi.CACerts()
+
+	pool, err := certpool()
+
 	if err != nil {
 		log.Println("raven: failed to load root TLS certificates:", err)
 	} else {
@@ -722,13 +738,13 @@ func CaptureError(err error, tags map[string]string, interfaces ...Interface) st
 }
 
 // CaptureErrorAndWait is identical to CaptureError, except it blocks and assures that the event was sent
-func (client *Client) CaptureErrorAndWait(err error, tags map[string]string, interfaces ...Interface) string {
+func (client *Client) CaptureErrorAndWait(err error, tags map[string]string, interfaces ...Interface) (string, error) {
 	if client == nil {
-		return ""
+		return "", nil
 	}
 
 	if client.shouldExcludeErr(err.Error()) {
-		return ""
+		return "", nil
 	}
 
 	extra := extractExtra(err)
@@ -737,14 +753,15 @@ func (client *Client) CaptureErrorAndWait(err error, tags map[string]string, int
 	packet := NewPacketWithExtra(err.Error(), extra, append(append(interfaces, client.context.interfaces()...), NewException(cause, GetOrNewStacktrace(err, cause, 1, 3, client.includePaths)))...)
 	eventID, ch := client.Capture(packet, tags)
 	if eventID != "" {
-		<-ch
+		err := <-ch
+		return eventID, err
 	}
 
-	return eventID
+	return "", nil
 }
 
 // CaptureErrorAndWait is identical to CaptureError, except it blocks and assures that the event was sent
-func CaptureErrorAndWait(err error, tags map[string]string, interfaces ...Interface) string {
+func CaptureErrorAndWait(err error, tags map[string]string, interfaces ...Interface) (string, error) {
 	return DefaultClient.CaptureErrorAndWait(err, tags, interfaces...)
 }
 
