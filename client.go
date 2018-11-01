@@ -342,7 +342,7 @@ var MaxQueueBuffer = 100
 func certpool() (*x509.CertPool, error) {
 	systemPool, err := x509.SystemCertPool()
 
-	if err == nil {
+	if err == nil && len(systemPool.Subjects()) > 0 {
 		return systemPool, nil
 	}
 
