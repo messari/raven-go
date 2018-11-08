@@ -367,7 +367,7 @@ func newTransport(opts *TransportOptions) Transport {
 	var pool *x509.CertPool
 	var err error
 
-	if opts.CertPool != nil {
+	if opts != nil && opts.CertPool != nil {
 		pool = opts.CertPool
 	} else {
 		pool, err = certpool()
