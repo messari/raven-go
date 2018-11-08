@@ -732,43 +732,21 @@ func (client *Client) CaptureMessageAndWait(message string, tags map[string]stri
 	return eventID
 }
 
-// CaptureMessageAndWait is identical to CaptureMessage except it blocks and waits for the message to be sent.
-func CaptureMessageAndWait(message string, tags map[string]string, interfaces ...Interface) string {
-	return DefaultClient.CaptureMessageAndWait(message, tags, interfaces...)
-}
-
 // CaptureErrors formats and delivers an error to the Sentry server.
 // Adds a stacktrace to the packet, excluding the call to this method.
 func (client *Client) CaptureError(err error, tags map[string]string, interfaces ...Interface) string {
-	if client == nil {
-		return ""
-	}
-
-	if err == nil {
-		return ""
-	}
-
-	if client.shouldExcludeErr(err.Error()) {
-		return ""
-	}
-
-	extra := extractExtra(err)
-	cause := pkgErrors.Cause(err)
-
-	packet := NewPacketWithExtra(err.Error(), extra, append(append(interfaces, client.context.interfaces()...), NewException(cause, GetOrNewStacktrace(err, cause, 1, 3, client.includePaths)))...)
-	eventID, _ := client.Capture(packet, tags)
-
-	return eventID
-}
-
-// CaptureErrors formats and delivers an error to the Sentry server using the default *Client.
-// Adds a stacktrace to the packet, excluding the call to this method.
-func CaptureError(err error, tags map[string]string, interfaces ...Interface) string {
-	return DefaultClient.CaptureError(err, tags, interfaces...)
+	id, _ := client.captureError(err, tags, interfaces...)
+	return id
 }
 
 // CaptureErrorAndWait is identical to CaptureError, except it blocks and assures that the event was sent
 func (client *Client) CaptureErrorAndWait(err error, tags map[string]string, interfaces ...Interface) (string, error) {
+	id, ch := client.captureError(err, tags, interfaces...)
+	return id, <-ch
+}
+
+// CaptureErrorAndWait is identical to CaptureError, except it blocks and assures that the event was sent
+func (client *Client) captureError(err error, tags map[string]string, interfaces ...Interface) (string, <-chan error) {
 	if client == nil {
 		return "", nil
 	}
@@ -782,17 +760,7 @@ func (client *Client) CaptureErrorAndWait(err error, tags map[string]string, int
 
 	packet := NewPacketWithExtra(err.Error(), extra, append(append(interfaces, client.context.interfaces()...), NewException(cause, GetOrNewStacktrace(err, cause, 1, 3, client.includePaths)))...)
 	eventID, ch := client.Capture(packet, tags)
-	if eventID != "" {
-		err := <-ch
-		return eventID, err
-	}
-
-	return "", nil
-}
-
-// CaptureErrorAndWait is identical to CaptureError, except it blocks and assures that the event was sent
-func CaptureErrorAndWait(err error, tags map[string]string, interfaces ...Interface) (string, error) {
-	return DefaultClient.CaptureErrorAndWait(err, tags, interfaces...)
+	return eventID, ch
 }
 
 // CapturePanic calls f and then recovers and reports a panic to the Sentry server if it occurs.
