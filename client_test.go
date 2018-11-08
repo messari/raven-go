@@ -16,7 +16,7 @@ func TestShouldExcludeErr(t *testing.T) {
 	regexpStrs := []string{"ERR_TIMEOUT", "should.exclude", "(?i)^big$"}
 
 	client := &Client{
-		Transport: newTransport(),
+		Transport: newTransport(nil),
 		Tags:      nil,
 		context:   &context{},
 		queue:     make(chan *outgoingPacket, MaxQueueBuffer),

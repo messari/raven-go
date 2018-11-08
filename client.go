@@ -398,6 +398,9 @@ type Options struct {
 }
 
 func newClient(opts *Options) *Client {
+	if opts == nil {
+		opts = &Options{}
+	}
 	client := &Client{
 		Transport:  newTransport(&opts.Transport),
 		Tags:       opts.Tags,
