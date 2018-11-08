@@ -2,18 +2,13 @@
 package raven
 
 import (
-	"bytes"
-	"compress/zlib"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
-	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -788,60 +783,6 @@ func (c *Client) ClearContext() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.context.clear()
-}
-
-// HTTPTransport is the default transport, delivering packets to Sentry via the
-// HTTP API.
-type HTTPTransport struct {
-	*http.Client
-}
-
-func (t *HTTPTransport) Send(url, authHeader string, packet *Packet) error {
-	if url == "" {
-		return nil
-	}
-
-	body, contentType, err := serializedPacket(packet)
-	if err != nil {
-		return fmt.Errorf("error serializing packet: %v", err)
-	}
-	req, err := http.NewRequest("POST", url, body)
-	if err != nil {
-		return fmt.Errorf("can't create new request: %v", err)
-	}
-	req.Header.Set("X-Sentry-Auth", authHeader)
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Content-Type", contentType)
-	res, err := t.Do(req)
-	if err != nil {
-		return err
-	}
-	io.Copy(ioutil.Discard, res.Body)
-	res.Body.Close()
-	if res.StatusCode != 200 {
-		return fmt.Errorf("raven: got http status %d - x-sentry-error: %s", res.StatusCode, res.Header.Get("X-Sentry-Error"))
-	}
-	return nil
-}
-
-func serializedPacket(packet *Packet) (io.Reader, string, error) {
-	packetJSON, err := packet.JSON()
-	if err != nil {
-		return nil, "", fmt.Errorf("error marshaling packet %+v to JSON: %v", packet, err)
-	}
-
-	// Only deflate/base64 the packet if it is bigger than 1KB, as there is
-	// overhead.
-	if len(packetJSON) > 1000 {
-		buf := &bytes.Buffer{}
-		b64 := base64.NewEncoder(base64.StdEncoding, buf)
-		deflate, _ := zlib.NewWriterLevel(b64, zlib.BestCompression)
-		deflate.Write(packetJSON)
-		deflate.Close()
-		b64.Close()
-		return buf, "application/octet-stream", nil
-	}
-	return bytes.NewReader(packetJSON), "application/json", nil
 }
 
 var hostname string
