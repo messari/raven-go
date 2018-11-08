@@ -392,6 +392,7 @@ type TransportOptions struct {
 }
 
 type Options struct {
+	DSN       string
 	Tags      map[string]string
 	Transport TransportOptions
 }
@@ -424,11 +425,9 @@ func NewWithTags(dsn string, tags map[string]string) (*Client, error) {
 
 // NewClient constructs a Sentry client and spawns a background goroutine to
 // handle packets sent by Client.Report.
-//
-// Deprecated: use New and NewWithTags instead
-func NewClient(dsn string, tags map[string]string) (*Client, error) {
-	client := newClient(&Options{Tags: tags})
-	return client, client.SetDSN(dsn)
+func NewClient(opts *Options) (*Client, error) {
+	client := newClient(opts)
+	return client, client.SetDSN(opts.DSN)
 }
 
 // Client encapsulates a connection to a Sentry server. It must be initialized
