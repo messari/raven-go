@@ -10,7 +10,7 @@ func CapturePanic(f func(), tags map[string]string, interfaces ...Interface) (in
 }
 
 // CapturePanicAndWait is identical to CaptureError, except it blocks and assures that the event was sent
-func CapturePanicAndWait(f func(), tags map[string]string, interfaces ...Interface) (interface{}, string) {
+func CapturePanicAndWait(f func(), tags map[string]string, interfaces ...Interface) (interface{}, string, error) {
 	return DefaultClient.CapturePanicAndWait(f, tags, interfaces...)
 }
 
@@ -31,7 +31,7 @@ func CaptureMessage(message string, tags map[string]string, interfaces ...Interf
 }
 
 // CaptureMessageAndWait is identical to CaptureMessage except it blocks and waits for the message to be sent.
-func CaptureMessageAndWait(message string, tags map[string]string, interfaces ...Interface) string {
+func CaptureMessageAndWait(message string, tags map[string]string, interfaces ...Interface) (string, error) {
 	return DefaultClient.CaptureMessageAndWait(message, tags, interfaces...)
 }
 

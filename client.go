@@ -605,37 +605,32 @@ func (client *Client) Capture(packet *Packet, captureTags map[string]string) (ev
 
 // CaptureMessage formats and delivers a string message to the Sentry server.
 func (client *Client) CaptureMessage(message string, tags map[string]string, interfaces ...Interface) string {
-	if client == nil {
-		return ""
-	}
-
-	if client.shouldExcludeErr(message) {
-		return ""
-	}
-
-	packet := NewPacket(message, append(append(interfaces, client.context.interfaces()...), &Message{message, nil})...)
-	eventID, _ := client.Capture(packet, tags)
-
-	return eventID
+	id, _ := client.captureMessage(message, tags, interfaces...)
+	return id
 }
 
 // CaptureMessageAndWait is identical to CaptureMessage except it blocks and waits for the message to be sent.
-func (client *Client) CaptureMessageAndWait(message string, tags map[string]string, interfaces ...Interface) string {
+func (client *Client) CaptureMessageAndWait(message string, tags map[string]string, interfaces ...Interface) (string, error) {
+	id, ch := client.captureMessage(message, tags, interfaces...)
+	return id, <-ch
+}
+
+// CaptureMessageAndWait is identical to CaptureMessage except it blocks and waits for the message to be sent.
+func (client *Client) captureMessage(message string, tags map[string]string, interfaces ...Interface) (string, <-chan error) {
+	cha := make(chan error)
 	if client == nil {
-		return ""
+		close(cha)
+		return "", cha
 	}
 
 	if client.shouldExcludeErr(message) {
-		return ""
+		close(cha)
+		return "", cha
 	}
 
 	packet := NewPacket(message, append(append(interfaces, client.context.interfaces()...), &Message{message, nil})...)
 	eventID, ch := client.Capture(packet, tags)
-	if eventID != "" {
-		<-ch
-	}
-
-	return eventID
+	return eventID, ch
 }
 
 // CaptureErrors formats and delivers an error to the Sentry server.
@@ -653,12 +648,21 @@ func (client *Client) CaptureErrorAndWait(err error, tags map[string]string, int
 
 // CaptureErrorAndWait is identical to CaptureError, except it blocks and assures that the event was sent
 func (client *Client) captureError(err error, tags map[string]string, interfaces ...Interface) (string, <-chan error) {
+	cha := make(chan error)
+
+	if err == nil {
+		close(cha)
+		return "", cha
+	}
+
 	if client == nil {
-		return "", nil
+		close(cha)
+		return "", cha
 	}
 
 	if client.shouldExcludeErr(err.Error()) {
-		return "", nil
+		close(cha)
+		return "", cha
 	}
 
 	extra := extractExtra(err)
@@ -671,39 +675,18 @@ func (client *Client) captureError(err error, tags map[string]string, interfaces
 
 // CapturePanic calls f and then recovers and reports a panic to the Sentry server if it occurs.
 // If an error is captured, both the error and the reported Sentry error ID are returned.
-func (client *Client) CapturePanic(f func(), tags map[string]string, interfaces ...Interface) (err interface{}, errorID string) {
-	// Note: This doesn't need to check for client, because we still want to go through the defer/recover path
-	// Down the line, Capture will be noop'd, so while this does a _tiny_ bit of overhead constructing the
-	// *Packet just to be thrown away, this should not be the normal case. Could be refactored to
-	// be completely noop though if we cared.
-	defer func() {
-		var packet *Packet
-		err = recover()
-		switch rval := err.(type) {
-		case nil:
-			return
-		case error:
-			if client.shouldExcludeErr(rval.Error()) {
-				return
-			}
-			packet = NewPacket(rval.Error(), append(append(interfaces, client.context.interfaces()...), NewException(rval, NewStacktrace(2, 3, client.includePaths)))...)
-		default:
-			rvalStr := fmt.Sprint(rval)
-			if client.shouldExcludeErr(rvalStr) {
-				return
-			}
-			packet = NewPacket(rvalStr, append(append(interfaces, client.context.interfaces()...), NewException(errors.New(rvalStr), NewStacktrace(2, 3, client.includePaths)))...)
-		}
+func (client *Client) CapturePanic(f func(), tags map[string]string, interfaces ...Interface) (interface{}, string) {
+	err, errorID, _ := client.capturePanic(f, tags, interfaces...)
+	return err, errorID
+}
 
-		errorID, _ = client.Capture(packet, tags)
-	}()
-
-	f()
-	return
+func (client *Client) CapturePanicAndWait(f func(), tags map[string]string, interfaces ...Interface) (interface{}, string, error) {
+	err, errorID, ch := client.capturePanic(f, tags, interfaces...)
+	return err, errorID, <-ch
 }
 
 // CapturePanicAndWait is identical to CaptureError, except it blocks and assures that the event was sent
-func (client *Client) CapturePanicAndWait(f func(), tags map[string]string, interfaces ...Interface) (err interface{}, errorID string) {
+func (client *Client) capturePanic(f func(), tags map[string]string, interfaces ...Interface) (err interface{}, errorID string, ch <-chan error) {
 	// Note: This doesn't need to check for client, because we still want to go through the defer/recover path
 	// Down the line, Capture will be noop'd, so while this does a _tiny_ bit of overhead constructing the
 	// *Packet just to be thrown away, this should not be the normal case. Could be refactored to
@@ -711,27 +694,28 @@ func (client *Client) CapturePanicAndWait(f func(), tags map[string]string, inte
 	defer func() {
 		var packet *Packet
 		err = recover()
+		cha := make(chan error)
+		ch = cha
 		switch rval := err.(type) {
 		case nil:
+			close(cha)
 			return
 		case error:
 			if client.shouldExcludeErr(rval.Error()) {
+				close(cha)
 				return
 			}
 			packet = NewPacket(rval.Error(), append(append(interfaces, client.context.interfaces()...), NewException(rval, NewStacktrace(2, 3, client.includePaths)))...)
 		default:
 			rvalStr := fmt.Sprint(rval)
 			if client.shouldExcludeErr(rvalStr) {
+				close(cha)
 				return
 			}
 			packet = NewPacket(rvalStr, append(append(interfaces, client.context.interfaces()...), NewException(errors.New(rvalStr), NewStacktrace(2, 3, client.includePaths)))...)
 		}
 
-		var ch chan error
 		errorID, ch = client.Capture(packet, tags)
-		if errorID != "" {
-			<-ch
-		}
 	}()
 
 	f()
