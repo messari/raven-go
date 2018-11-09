@@ -64,7 +64,7 @@ type Http struct {
 
 func (h *Http) Class() string { return "request" }
 
-func (client *Client) RevoveryHandler(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func (client *Client) RecoveryHandler(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return client.Recoverer(http.HandlerFunc(handler)).ServeHTTP
 }
 
@@ -95,7 +95,7 @@ func (client *Client) Recoverer(handler http.Handler) http.Handler {
 //		...
 //	}))
 func RecoveryHandler(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
-	return DefaultClient.Recoverer(http.HandlerFunc(handler)).ServeHTTP
+	return DefaultClient.RecoveryHandler(handler)
 }
 
 // Recovery handler to wrap the stdlib net/http Mux.
