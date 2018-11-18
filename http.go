@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"runtime/debug"
 	"strings"
+
+	pkgErrors "github.com/pkg/errors"
 )
 
 func NewHttp(req *http.Request) *Http {
@@ -83,9 +85,11 @@ func Recoverer(handler http.Handler) http.Handler {
 			if rval := recover(); rval != nil {
 				debug.PrintStack()
 				rvalStr := fmt.Sprint(rval)
+
 				var packet *Packet
 				if err, ok := rval.(error); ok {
-					packet = NewPacket(rvalStr, NewException(errors.New(rvalStr), GetOrNewStacktrace(err, 2, 3, nil)), NewHttp(r))
+					cause := pkgErrors.Cause(err)
+					packet = NewPacket(rvalStr, NewException(errors.New(rvalStr), GetOrNewStacktrace(err, cause, 2, 3, nil)), NewHttp(r))
 				} else {
 					packet = NewPacket(rvalStr, NewException(errors.New(rvalStr), NewStacktrace(2, 3, nil)), NewHttp(r))
 				}
